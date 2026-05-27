@@ -121,6 +121,15 @@ let pollTimer = null;
 let lastMessageId = null;
 let chatId = null;
 
+// --- Marinara API wrappers ---
+const M = typeof marinara !== 'undefined' ? marinara : null;
+function mSetInterval(fn, ms) { return M ? M.setInterval(fn, ms) : setInterval(fn, ms); }
+function mSetTimeout(fn, ms) { return M ? M.setTimeout(fn, ms) : setTimeout(fn, ms); }
+function mClearInterval(id) { if (M && M.clearInterval) M.clearInterval(id); else clearInterval(id); }
+function mClearTimeout(id) { if (M && M.clearTimeout) M.clearTimeout(id); else clearTimeout(id); }
+function mOnCleanup(fn) { if (M && M.onCleanup) M.onCleanup(fn); }
+function mApiFetch(path, opts) { return M ? M.apiFetch(path, opts) : fetch(path, opts); }
+
 // --- Helpers ---
 function hexToBytes(hex) {
     const bytes = [];
@@ -154,7 +163,7 @@ function saveSettings(s) {
 
 function startRamping() {
     if (rampTimer) return;
-    rampTimer = setInterval(() => {
+    rampTimer = mSetInterval(() => {
         const diffA = targetA - rampCurrentA;
         if (Math.abs(diffA) <= RAMP_STEP) rampCurrentA = targetA;
         else rampCurrentA += diffA > 0 ? RAMP_STEP : -RAMP_STEP;
@@ -214,8 +223,8 @@ async function connectBluetooth() {
         saveSettings(s);
 
         await sendBF();
-        if (b0Timer) clearInterval(b0Timer);
-        b0Timer = setInterval(sendB0, 100);
+        if (b0Timer) mClearInterval(b0Timer);
+        b0Timer = mSetInterval(sendB0, 100);
 
         updateStatus();
         console.log('[Coyote3] Paired!');
@@ -234,7 +243,7 @@ function onDisconnected() {
     btWriteChar = null;
     btNotifyChar = null;
     btBatteryChar = null;
-    if (b0Timer) { clearInterval(b0Timer); b0Timer = null; }
+    if (b0Timer) { mClearInterval(b0Timer); b0Timer = null; }
     targetA = 0; targetB = 0;
     rampCurrentA = 0; rampCurrentB = 0;
     activePresetA = null; activePresetB = null;
@@ -439,14 +448,14 @@ function startLoop() {
         const cmd = messageCommands[idx % messageCommands.length];
         sendCommand(cmd);
         idx++;
-        loopTimer = setTimeout(next, (cmd.time || 5) * 1000);
+        loopTimer = mSetTimeout(next, (cmd.time || 5) * 1000);
     };
     next();
 }
 
 function stopLoop() {
     isLooping = false;
-    if (loopTimer) { clearTimeout(loopTimer); loopTimer = null; }
+    if (loopTimer) { mClearTimeout(loopTimer); loopTimer = null; }
 }
 
 // --- Chat Polling ---
@@ -473,7 +482,7 @@ async function pollMessages() {
     if (!chatId) return;
 
     try {
-        const res = await fetch(`/api/chat/${chatId}/messages`);
+        const res = await mApiFetch(`/api/chat/${chatId}/messages`);
         if (!res.ok) return;
         const data = await res.json();
         const messages = Array.isArray(data) ? data : (data.messages || []);
@@ -747,8 +756,19 @@ function init() {
     startRamping();
 
     // Start chat polling
-    if (pollTimer) clearInterval(pollTimer);
-    pollTimer = setInterval(pollMessages, 2000);
+    if (pollTimer) mClearInterval(pollTimer);
+    pollTimer = mSetInterval(pollMessages, 2000);
+
+    // Register cleanup
+    mOnCleanup(() => {
+        if (rampTimer) { mClearInterval(rampTimer); rampTimer = null; }
+        if (b0Timer) { mClearInterval(b0Timer); b0Timer = null; }
+        if (pollTimer) { mClearInterval(pollTimer); pollTimer = null; }
+        if (loopTimer) { mClearTimeout(loopTimer); loopTimer = null; }
+        disconnectBluetooth();
+        const p = document.getElementById('c3v2-panel');
+        if (p) p.remove();
+    });
 
     console.log('[Coyote3] Extension initialized');
 }
