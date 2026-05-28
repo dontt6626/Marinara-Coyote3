@@ -714,6 +714,8 @@ function setupEventListeners() {
 
     document.getElementById('c3v2_stop').addEventListener('click', () => {
         targetA = 0; targetB = 0;
+        rampCurrentA = 0; rampCurrentB = 0;
+        activePresetA = null; activePresetB = null;
         stopLoop();
         updateStatus();
     });
