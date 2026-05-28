@@ -1,81 +1,207 @@
 # Marinara Engine Coyote 3.0 Control v2
 
-A [Marinara Engine](https://github.com/pasta-devs/marinara-engine) extension for controlling your **DG-LAB Coyote 3.0** e-stim device via Web Bluetooth.
+Control your **DG-LAB Coyote 3.0** e-stim device directly from [Marinara Engine](https://github.com/pasta-devs/marinara-engine) via Web Bluetooth. AI characters can trigger your device in real time using simple XML-style tags.
 
-## Features
+---
 
-- **XToys-style volume control** — Per-channel volume sliders (0-100%) scale all output proportionally
+## Quick Start
+
+1. **Install** the extension in Marinara (paste JS + CSS in Admin → Extensions)
+2. **Pair** your Coyote 3.0 (click "Pair Device" — it looks for `47L121000`)
+3. **Paste** the AI prompt instructions into your character card or prompt preset
+4. **Chat** — the AI will now automatically embed device commands in responses
+
+See the detailed steps below.
+
+---
+
+## What This Does
+
+- **XToys-style volume** — Per-channel sliders (0-100%) scale all output like a real volume knob
 - **Waveform presets** — Gentle, Pulse, Wave, Intense, Tease
-- **AI-driven control** — AI emits XML-style tags that trigger your device in real time
-- **Live stats** — Target, current, and battery level displayed in real time
-- **Web Bluetooth** — Direct browser-to-device, no extra server needed
+- **AI-driven control** — AI emits `<coyote3:a="50" time="5"/>` tags that trigger your device
+- **Live stats** — Current intensity, battery, active waveform shown in real time
+- **Zero server** — Direct browser-to-device Bluetooth. Nothing leaves your machine.
+
+---
 
 ## Installation
 
-1. In Marinara Engine: **Admin** → **Extensions**
-2. Paste the contents of `coyote3.js` into the **JavaScript** field
-3. Paste the contents of `coyote3.css` into the **CSS** field
-4. Save and enable the extension
+### 1. Open the Extensions Panel
 
-## Setup
+In Marinara Engine, go to **Admin** (gear icon) → **Extensions**.
 
-1. Make sure your Coyote 3.0 is powered on and nearby
-2. Use **Chrome or Edge** (Web Bluetooth is not supported in Firefox/Safari)
-3. The extension panel appears as a floating widget in the bottom-right corner
-4. Click **Pair Device** and select `47L121000` from the Bluetooth picker
-5. Set your **Volume** (start around 30%)
-6. Toggle **Enable AI Control**
+### 2. Paste the Code
 
-## How It Works
+| Field | What to paste |
+|-------|---------------|
+| **Name** | `Coyote 3.0 Control v2` |
+| **Description** | `DG-LAB Coyote 3.0 Bluetooth control` |
+| **JavaScript** | Copy the entire contents of `coyote3.js` |
+| **CSS** | Copy the entire contents of `coyote3.css` |
 
-The extension sends B0 frames every 100ms to the device. Output is controlled by:
+### 3. Save and Enable
 
-1. **Target intensity** (0-200) — set by AI commands or test buttons
-2. **Volume** (0-100%) — scales the waveform slot intensities proportionally
-3. **Waveform preset** — defines the pulse pattern
+Click **Save**, then toggle the extension **On**.
 
-### Volume
+A floating panel will appear in the bottom-right corner of every Marinara page.
+
+---
+
+## Device Setup
+
+### 1. Power On Your Device
+
+Make sure your Coyote 3.0 is on and nearby (within ~3 meters).
+
+### 2. Use Chrome or Edge
+
+Web Bluetooth is **not supported** in Firefox or Safari. Use Chromium-based browser on desktop or Android.
+
+### 3. Pair
+
+In the floating panel, click **Pair Device**. When the Bluetooth picker opens, select the device starting with `47` (e.g. `47L121000`).
+
+### 4. Set Volume
+
+Start around **30%** on both channels. This is your master scaling factor — the AI can still request up to 200 intensity, but it will be scaled down by your volume.
+
+### 5. Enable AI Control
+
+Toggle **Enable AI Control** in the panel. The extension is now actively polling chat messages for commands.
+
+---
+
+## CRITICAL: Teach the AI About the Device
+
+**The AI does not automatically know this extension exists.** You must paste instructions into one of these locations so the AI learns how to control your device:
+
+### Option A — Character Card (Recommended)
+
+Best if you want this specific character to control the device.
+
+1. Open your character in Marinara
+2. Find the **System Prompt** or **Creator's Notes** field
+3. Paste the prompt text from `docs/PROMPT.md`
+4. Save the character
+
+### Option B — Prompt Preset
+
+Best if you want **every** character in a chat to control the device.
+
+1. Go to **Settings** → **Presets**
+2. Edit your active preset
+3. Paste the prompt text into the **System Prompt** section
+4. Save the preset
+
+### Option C — Lorebook
+
+Best if you want the device to activate conditionally (e.g. only during certain scenes).
+
+1. Go to **Lorebooks**
+2. Create or edit a lorebook
+3. Add an entry with a trigger keyword (e.g. `coyote` or `device`)
+4. Paste the prompt text into the entry content
+5. Attach the lorebook to your chat
+
+> **Which one should I pick?** If you only want one character to control it, use Option A. If you want all characters to control it, use Option B.
+
+---
+
+## How Volume Works
 
 Unlike a ceiling/threshold, volume is a true multiplier:
 
-- Volume = 100%, target = 100 → device receives full 100
-- Volume = 30%, target = 100 → device receives 30 (scaled proportionally)
-- Volume = 0% → no output regardless of target
+| Volume | Target | Actual Output |
+|--------|--------|---------------|
+| 100%   | 100    | 100 (full)    |
+| 50%    | 100    | 50 (half)     |
+| 30%    | 100    | 30 (gentle)   |
+| 0%     | 100    | 0 (silent)    |
 
-This matches XToys' behavior where you set a comfortable base level and the content modulates within that range.
+This matches XToys behavior: set a comfortable base level, then let the content modulate within that range.
+
+---
 
 ## AI Commands
 
-Add the prompt text from `docs/PROMPT.md` to your **character card** or **prompt preset** so the AI knows how to control the device.
+Once the prompt is installed, the AI can use these commands naturally in responses:
 
 ```xml
-<coyote3:a="50" time="5"/>     - Set Channel A to 50 for 5 seconds
-<coyote3:b="30" time="3"/>     - Set Channel B to 30 for 3 seconds
-<coyote3:stop/>                - Immediately stop both channels
-<coyote3:clear channel="A"/>   - Clear Channel A
+<coyote3:a="50" time="5"/>                 - Channel A to 50 for 5 seconds
+<coyote3:b="30" time="3"/>                 - Channel B to 30 for 3 seconds
+<coyote3:stop/>                             - Stop everything immediately
+<coyote3:clear channel="A"/>                - Zero out Channel A
 <coyote3:a="80" preset="intense" time="10"/> - Use "intense" waveform
 ```
 
-## Manual Commands
+Available presets: `gentle`, `pulse`, `wave`, `intense`, `tease`
 
-You can also type commands directly into the **Manual Command** box in the extension panel. This is useful for testing.
+---
+
+## Manual Controls
+
+The floating panel lets you test the device directly:
+
+- **Test buttons** — Instantly set Channel A or B to 25 / 50 / 100 / MAX
+- **Stop All** — Cuts output to zero immediately (no ramp down)
+- **Manual Command** — Type a command like `<coyote3:a="50" time="5"/>` and click Send
+- **Volume sliders** — Live adjustment of both channels
+- **Waveform selectors** — Change pattern on the fly
+- **Soft limits** — Safety caps (0-200) per channel
+
+---
 
 ## Protocol Notes
 
-This implementation follows the [DG-LAB V3 Bluetooth Protocol](https://github.com/DG-LAB-OPENSOURCE/DG-LAB-OPENSOURCE/tree/main/coyote/v3) and the [DG-Kit](https://github.com/0xNullAI/DG-Kit) reference implementation.
+This follows the [DG-LAB V3 Bluetooth Protocol](https://github.com/DG-LAB-OPENSOURCE/DG-LAB-OPENSOURCE/tree/main/coyote/v3) and [DG-Kit](https://github.com/0xNullAI/DG-Kit) reference:
 
-Key points:
-- Uses proper seq/ack handshake for B0 frames
-- Slot intensities are 0-255 (device scales proportionally)
-- intBal defaults to 0 (matching official DG-Kit)
-- Volume scales waveform slots, not strength bytes
+- Proper seq/ack handshake for B0 frames
+- Slot intensities 0-255 (device scales proportionally)
+- intBal defaults to 0
+- 100ms packet interval
+
+---
 
 ## Troubleshooting
 
-- **"Web Bluetooth not supported"** — Use Chrome or Edge on desktop or Android. iOS does not support Web Bluetooth.
-- **"Bluetooth failed"** — Make sure the device is on and not connected to another app.
-- **No sensation** — Check volume is above 0%, check soft limits, and verify the device is paired.
-- **AI not sending commands** — Make sure you included the prompt instructions in your character card or preset.
+### "AI is not sending any commands"
+
+**This is the most common issue.** The AI only knows about the device if you pasted the prompt instructions. See [CRITICAL: Teach the AI About the Device](#critical-teach-the-ai-about-the-device) above.
+
+Double-check:
+- The prompt text from `docs/PROMPT.md` is actually in your character card, preset, or lorebook
+- You're using the same character/preset that has the prompt
+- The extension panel shows **Paired** and **Enable AI Control** is toggled on
+
+### "Web Bluetooth not supported"
+
+Use **Chrome** or **Edge** on desktop or Android. Firefox, Safari, and iOS do not support Web Bluetooth.
+
+### "Bluetooth failed" or "Device not found"
+
+- Make sure the Coyote 3.0 is powered on (blue LED flashing)
+- Make sure it's not already connected to the DG-LAB app on your phone
+- Move the device closer to your computer
+- Try refreshing the Marinara page and pairing again
+
+### "Paired but I feel nothing"
+
+1. Check **Volume** is above 0% in the panel
+2. Check **Soft Limits** are above 0
+3. Click a **test button** (e.g. Channel A = 100). If you feel nothing here, the device itself isn't outputting.
+4. Make sure the physical power mode on the device is set to Bluetooth (not wired/DG-LAB app mode)
+5. Try the **Manual Command** box: type `<coyote3:a="100" time="5"/>` and click Send
+
+### "Commands feel delayed"
+
+The extension polls chat messages every **2 seconds**. There will always be a small delay between the AI sending a message and the device reacting. This is normal.
+
+### "Volume doesn't seem to do anything"
+
+Volume scales the **waveform slot intensities**, not the raw strength bytes. If your waveform preset has very low slot values, the effect may be subtle. Try switching to **Intense** preset and testing again.
+
+---
 
 ## License
 
