@@ -461,45 +461,124 @@ function stopLoop() {
 // --- Chat Polling ---
 
 function detectChatId() {
-    // Try URL path
-    const m = window.location.pathname.match(/\/chat\/([^/]+)/i);
+    // 1. Use marinara.chat API if available
+    if (typeof marinara !== 'undefined' && marinara.chat && typeof marinara.chat.getActiveId === 'function') {
+        try {
+            const id = marinara.chat.getActiveId();
+            if (id) {
+                console.log('[Coyote3] Chat ID from marinara.chat.getActiveId():', id);
+                return id;
+            }
+        } catch (e) {
+            console.warn('[Coyote3] getActiveId failed:', e);
+        }
+    }
+
+    // 2. Try URL path
+    const m = window.location.pathname.match(/\/chat[s]?\/([^/]+)/i);
     if (m) return m[1];
     const m2 = window.location.pathname.match(/\/c\/([^/]+)/i);
     if (m2) return m2[1];
 
-    // Try DOM data attributes
+    // 3. Try DOM data attributes
     const el = document.querySelector('[data-chat-id], [data-chatid]');
     if (el) return el.dataset.chatId || el.dataset.chatid;
 
     return null;
 }
 
+async function fetchMessagesViaAPI(id) {
+    const paths = [
+        `/api/chats/${id}/messages`,
+        `/api/chat/${id}/messages`,
+        `/api/messages?chatId=${id}`,
+    ];
+    for (const path of paths) {
+        try {
+            const res = await mApiFetch(path);
+            if (res.ok) {
+                console.log('[Coyote3] fetchMessages success via:', path);
+                return res;
+            }
+            console.log('[Coyote3] fetchMessages failed path:', path, 'status:', res.status);
+        } catch (e) {
+            console.warn('[Coyote3] fetchMessages error path:', path, e.message);
+        }
+    }
+    return null;
+}
+
+async function getMessages() {
+    // 1. Try marinara.chat.getMessages()
+    if (typeof marinara !== 'undefined' && marinara.chat && typeof marinara.chat.getMessages === 'function') {
+        try {
+            const msgs = await marinara.chat.getMessages();
+            if (msgs && msgs.length) {
+                console.log('[Coyote3] Messages from marinara.chat.getMessages():', msgs.length);
+                return msgs;
+            }
+        } catch (e) {
+            console.warn('[Coyote3] getMessages failed:', e);
+        }
+    }
+
+    // 2. Fallback to raw fetch
+    if (!chatId) chatId = detectChatId();
+    if (!chatId) {
+        console.warn('[Coyote3] No chatId detected');
+        return [];
+    }
+
+    const res = await fetchMessagesViaAPI(chatId);
+    if (!res) {
+        console.warn('[Coyote3] All API fetch attempts failed for chatId:', chatId);
+        return [];
+    }
+
+    const data = await res.json();
+    const msgs = Array.isArray(data) ? data : (data.messages || data.results || []);
+    return msgs;
+}
+
 async function pollMessages() {
     const s = loadSettings();
     if (!s.enabled || !s.paired) return;
 
-    if (!chatId) chatId = detectChatId();
-    if (!chatId) return;
-
     try {
-        const res = await mApiFetch(`/api/chat/${chatId}/messages`);
-        if (!res.ok) return;
-        const data = await res.json();
-        const messages = Array.isArray(data) ? data : (data.messages || []);
+        const messages = await getMessages();
         if (!messages.length) return;
 
         const lastMsg = messages[messages.length - 1];
-        const lastId = lastMsg.id || lastMsg._id || lastMsg.index;
-        if (lastId === lastMessageId) return;
-        lastMessageId = lastId;
+        const lastId = lastMsg.id || lastMsg._id || lastMsg.index || lastMsg.messageId;
+        if (lastId == null) {
+            // Fallback: compare raw text if no ID
+            const text = lastMsg.content || lastMsg.text || lastMsg.message || lastMsg.mes || '';
+            if (text === lastMessageId) return;
+            lastMessageId = text;
+        } else {
+            if (lastId === lastMessageId) return;
+            lastMessageId = lastId;
+        }
+
+        console.log('[Coyote3] New message detected:', lastId || '(fallback text hash)');
 
         // Only process AI messages
-        if (lastMsg.role === 'user' || lastMsg.is_user || lastMsg.sender === 'user') return;
+        const role = lastMsg.role || lastMsg.sender || '';
+        if (role === 'user' || lastMsg.is_user === true) {
+            console.log('[Coyote3] Skipping user message');
+            return;
+        }
 
         const text = lastMsg.content || lastMsg.text || lastMsg.message || lastMsg.mes || '';
-        const cmds = parseCommands(text);
-        if (!cmds.length) return;
+        console.log('[Coyote3] Message text length:', text.length);
 
+        const cmds = parseCommands(text);
+        if (!cmds.length) {
+            console.log('[Coyote3] No coyote commands found in message');
+            return;
+        }
+
+        console.log('[Coyote3] Parsed commands:', cmds);
         stopLoop();
         messageCommands = cmds;
         executedCommands.clear();
@@ -507,6 +586,37 @@ async function pollMessages() {
     } catch (e) {
         console.error('[Coyote3] pollMessages error:', e);
     }
+}
+
+// --- DOM MutationObserver fallback ---
+let observerFallback = null;
+function startDomObserver() {
+    if (observerFallback) return;
+    const chatContainer = document.querySelector('[data-chat-container], .chat-messages, .messages, [class*="chat"]');
+    if (!chatContainer) {
+        console.warn('[Coyote3] No chat container found for DOM observer');
+        return;
+    }
+    observerFallback = new MutationObserver((mutations) => {
+        for (const m of mutations) {
+            for (const node of m.addedNodes) {
+                if (node.nodeType === Node.ELEMENT_NODE) {
+                    const text = node.textContent || '';
+                    const cmds = parseCommands(text);
+                    if (cmds.length) {
+                        console.log('[Coyote3] Commands detected via DOM observer');
+                        stopLoop();
+                        messageCommands = cmds;
+                        executedCommands.clear();
+                        startLoop();
+                        return;
+                    }
+                }
+            }
+        }
+    });
+    observerFallback.observe(chatContainer, { childList: true, subtree: true });
+    console.log('[Coyote3] DOM observer started on:', chatContainer);
 }
 
 // --- UI ---
@@ -761,12 +871,16 @@ function init() {
     if (pollTimer) mClearInterval(pollTimer);
     pollTimer = mSetInterval(pollMessages, 2000);
 
+    // Start DOM observer as fallback
+    startDomObserver();
+
     // Register cleanup
     mOnCleanup(() => {
         if (rampTimer) { mClearInterval(rampTimer); rampTimer = null; }
         if (b0Timer) { mClearInterval(b0Timer); b0Timer = null; }
         if (pollTimer) { mClearInterval(pollTimer); pollTimer = null; }
         if (loopTimer) { mClearTimeout(loopTimer); loopTimer = null; }
+        if (observerFallback) { observerFallback.disconnect(); observerFallback = null; }
         disconnectBluetooth();
         const p = document.getElementById('c3v2-panel');
         if (p) p.remove();
